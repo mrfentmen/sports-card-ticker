@@ -7,7 +7,8 @@
 
   var state = {
     watch: [],   // {id (query key), name (listing title), query, image, price (median), count, currency, trend, hist:[{p,t}], ts}
-    token: ''    // eBay access token, stored via chrome.storage.local
+    token: '',   // eBay access token, stored via chrome.storage.local
+    snoozeUntil: 0
   };
 
   var els = {
@@ -42,7 +43,9 @@
     ctxMenu: document.getElementById('ctxMenu'),
     refreshAge: document.getElementById('refreshAge'),
     sparkTooltip: document.getElementById('sparkTooltip'),
-    recentSearches: document.getElementById('recentSearches')
+    recentSearches: document.getElementById('recentSearches'),
+    snoozeBtn: document.getElementById('snoozeBtn'),
+    copyAll: document.getElementById('copyAll')
   };
 
   var ctxTarget = null;
@@ -92,6 +95,7 @@
   }
 
   function flashAlert(entry, dir) {
+    if (state.snoozeUntil && Date.now() < state.snoozeUntil) return;
     if (!Array.isArray(entry.alertLog)) entry.alertLog = [];
     var threshold = dir === 'above' ? entry.alertAbove : entry.alertBelow;
     var verb = dir === 'above' ? 'hit' : 'dropped below';
@@ -504,6 +508,7 @@
     els.clearAll.hidden = state.watch.length === 0;
     els.exportCsv.hidden = state.watch.length === 0;
     els.copyClip.hidden = state.watch.length === 0;
+    els.copyAll.hidden = state.watch.length === 0;
     renderTape();
     // portfolio total
     var sum = 0; var priced = 0;
@@ -593,6 +598,20 @@
       range.className = 'card-range';
       range.textContent = 'H ' + Sport.formatPrice(ath) + '  L ' + Sport.formatPrice(atl);
       quote.appendChild(range);
+    }
+
+    // ---- 7-day volatility ----
+    if (Array.isArray(w.daily) && w.daily.length >= 2) {
+      var last7d = w.daily.slice(-7);
+      var dmin = Infinity; var dmax = -Infinity;
+      last7d.forEach(function (d) { if (d.p < dmin) dmin = d.p; if (d.p > dmax) dmax = d.p; });
+      if (dmin > 0 && dmax > dmin) {
+        var vol = ((dmax - dmin) / dmin * 100).toFixed(1);
+        var volEl = document.createElement('div');
+        volEl.className = 'card-vol';
+        volEl.textContent = '±' + vol + '% 7d';
+        quote.appendChild(volEl);
+      }
     }
 
     // ---- range border ----
@@ -929,6 +948,16 @@
   // ---------- refresh button + auto-refresh ----------
   els.sortBy.addEventListener('change', function () { render(); });
   els.exportCsv.addEventListener('click', exportCsv);
+  els.copyAll.addEventListener('click', function () {
+    var lines = state.watch.map(function (w) {
+      return w.name + '\t' + (w.price != null ? '$' + w.price.toFixed(2) : '—');
+    });
+    navigator.clipboard.writeText(lines.join('\n')).then(function () {
+      setStatus('📋 Copied ' + state.watch.length + ' prices');
+    }).catch(function () {
+      setStatus('Could not copy', true);
+    });
+  });
   els.copyClip.addEventListener('click', function () {
     var lines = state.watch.map(function (w) {
       var trendStr = w.trend ? (w.trend.dir === 1 ? '+' : '') + w.trend.pct.toFixed(1) + '%' : '—';
@@ -940,6 +969,30 @@
       setStatus('Could not copy — click 📥 CSV instead', true);
     });
   });
+  function updateSnooze() {
+    if (!state.snoozeUntil || Date.now() >= state.snoozeUntil) {
+      state.snoozeUntil = 0;
+      els.snoozeBtn.textContent = '🔕 Snooze';
+      els.snoozeBtn.classList.remove('active');
+    } else {
+      var left = Math.max(0, Math.ceil((state.snoozeUntil - Date.now()) / 60000));
+      els.snoozeBtn.textContent = '🔕 ' + left + 'm';
+      els.snoozeBtn.classList.add('active');
+    }
+  }
+
+  els.snoozeBtn.addEventListener('click', function () {
+    if (state.snoozeUntil && Date.now() < state.snoozeUntil) {
+      state.snoozeUntil = 0;
+      updateSnooze();
+      setStatus('Alerts re-enabled');
+    } else {
+      state.snoozeUntil = Date.now() + 3600000;
+      updateSnooze();
+      setStatus('Alerts snoozed for 1 hour');
+    }
+  });
+
   els.themeToggle.addEventListener('click', function () {
     document.body.classList.toggle('light');
     var isLight = document.body.classList.contains('light');
