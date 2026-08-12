@@ -83,6 +83,7 @@
         state.watch = w.filter(function (c) { return c && c.id && c.query && c.name; }).map(function (c) {
           if (!Array.isArray(c.hist)) c.hist = [];
           c.hist = c.hist.filter(function (h) { return h && typeof h.p === 'number' && typeof h.t === 'number'; });
+          if (!Array.isArray(c.daily)) c.daily = [];
           return c;
         });
       }
@@ -371,6 +372,12 @@
       entry.trend = Sport.historyTrend(entry.hist);
       entry.ts = Date.now();
       if (crossed) flashAlert(entry);
+      // daily price snapshot (30-day sparkline — update today's entry or push a new day)
+      if (!entry.daily) entry.daily = [];
+      var today = new Date().toISOString().slice(0, 10);
+      var last = entry.daily.length ? entry.daily[entry.daily.length - 1] : null;
+      if (last && last.d === today) { last.p = r.median; }
+      else { entry.daily.push({ d: today, p: r.median }); if (entry.daily.length > 30) entry.daily = entry.daily.slice(-30); }
     }
     save();
     render();
@@ -435,8 +442,8 @@
 
     var bars = document.createElement('div');
     bars.className = 'card-bars';
-    bars.title = 'Median history (latest ' + HIST_MAX + ' refreshes)';
-    var heights = Sport.sparkBars(w.hist, 8);
+    bars.title = '30-day price sparkline';
+    var heights = Sport.sparkBars(w.daily, 30);
     if (heights.length) {
       heights.forEach(function (v) {
         var b = document.createElement('span');
