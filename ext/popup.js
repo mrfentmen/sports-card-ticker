@@ -41,7 +41,8 @@
     themeToggle: document.getElementById('themeToggle'),
     ctxMenu: document.getElementById('ctxMenu'),
     refreshAge: document.getElementById('refreshAge'),
-    sparkTooltip: document.getElementById('sparkTooltip')
+    sparkTooltip: document.getElementById('sparkTooltip'),
+    recentSearches: document.getElementById('recentSearches')
   };
 
   var ctxTarget = null;
@@ -198,6 +199,38 @@
   });
 
   // ---------- search ----------
+  var recentSearches = [];
+
+  function loadRecent() {
+    chrome.storage.local.get('sptRecent', function (d) {
+      if (Array.isArray(d && d.sptRecent)) recentSearches = d.sptRecent.slice(0, 5);
+      renderRecent();
+    });
+  }
+
+  function saveRecent(q) {
+    recentSearches = recentSearches.filter(function (s) { return s !== q; });
+    recentSearches.unshift(q);
+    if (recentSearches.length > 5) recentSearches.length = 5;
+    chrome.storage.local.set({ sptRecent: recentSearches });
+    renderRecent();
+  }
+
+  function renderRecent() {
+    if (!recentSearches.length) { els.recentSearches.innerHTML = ''; return; }
+    var html = '';
+    recentSearches.forEach(function (s) {
+      html += '<button class="recent-chip" type="button">' + esc(s) + '</button>';
+    });
+    els.recentSearches.innerHTML = html;
+    els.recentSearches.querySelectorAll('.recent-chip').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        els.search.value = btn.textContent;
+        doSearch(btn.textContent);
+      });
+    });
+  }
+
   function doSearch(query) {
     var q = query.trim();
     if (q.length < 2) {
@@ -212,6 +245,7 @@
     Sport.fetchJson(Sport.searchUrl(q, 40), { token: state.token, tries: 3, backoff: 700 })
       .then(function (json) {
         if (myId !== searchId) return;
+        saveRecent(q);
         renderResults(Sport.parseSearch(json), q);
       })
       .catch(function (err) {
@@ -453,7 +487,10 @@
     // portfolio total
     var sum = 0; var priced = 0;
     state.watch.forEach(function (w) { if (w.price != null) { sum += w.price; priced++; } });
-    els.portfolio.textContent = priced ? 'Total: $' + sum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' (' + priced + ' cards)' : '';
+    var daySum = 0;
+    state.watch.forEach(function (w) { var d = dayChange(w); if (d != null) daySum += d; });
+    var dayStr = daySum !== 0 ? (' <span class="portfolio-day ' + (daySum > 0 ? 'up' : 'down') + '">' + (daySum > 0 ? '+' : '') + '$' + Math.abs(daySum).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' 24h</span>') : '';
+    els.portfolio.innerHTML = (priced ? 'Total: $' + sum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' (' + priced + ' cards)' + dayStr : '');
     // sort — favorites always on top, then sort within each group
     var sort = els.sortBy.value;
     var sorted = state.watch.slice();
@@ -535,6 +572,14 @@
       range.className = 'card-range';
       range.textContent = 'H ' + Sport.formatPrice(ath) + '  L ' + Sport.formatPrice(atl);
       quote.appendChild(range);
+    }
+
+    // ---- range border ----
+    if (ath != null && atl != null && ath !== atl && w.price != null) {
+      var pctBorder = Math.max(0, Math.min(100, (w.price - atl) / (ath - atl) * 100));
+      var hue = pctBorder * 1.2;
+      row.style.borderLeft = '3px solid hsl(' + hue + ', 70%, 45%)';
+      row.style.paddingLeft = '7px';
     }
 
     // ---- price position bar ----
@@ -1070,6 +1115,7 @@
   chrome.action.setBadgeText({ text: '' });
   applyTheme();
   applyCompact();
+  loadRecent();
   load(function () {
     if (!state.token) {
       openSettings();
