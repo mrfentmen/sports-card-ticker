@@ -32,8 +32,26 @@
     zoomToast: document.getElementById('zoom-toast'),
     retry: document.getElementById('retry'),
     alertLogBtn: document.getElementById('alertLogBtn'),
-    alertLogPanel: document.getElementById('alertLogPanel')
+    alertLogPanel: document.getElementById('alertLogPanel'),
+    portfolio: document.getElementById('portfolio'),
+    sortBy: document.getElementById('sortBy')
   };
+
+  var chimeCtx = null;
+  function chime() {
+    try {
+      if (!chimeCtx) chimeCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var o = chimeCtx.createOscillator();
+      var g = chimeCtx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(880, chimeCtx.currentTime);
+      o.frequency.setValueAtTime(1100, chimeCtx.currentTime + 0.08);
+      g.gain.setValueAtTime(0.12, chimeCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, chimeCtx.currentTime + 0.3);
+      o.connect(g); g.connect(chimeCtx.destination);
+      o.start(chimeCtx.currentTime); o.stop(chimeCtx.currentTime + 0.3);
+    } catch (_) { /* audio not available */ }
+  }
 
   var hintTimer = null;
   var pageZoom = 1;
@@ -57,14 +75,17 @@
 
   function flashAlert(entry, dir) {
     if (!Array.isArray(entry.alertLog)) entry.alertLog = [];
-    entry.alertLog.push({ ts: Date.now(), dir: dir, threshold: dir === 'above' ? entry.alertAbove : entry.alertBelow, price: entry.price, name: entry.name });
+    var threshold = dir === 'above' ? entry.alertAbove : entry.alertBelow;
+    var verb = dir === 'above' ? 'hit' : 'dropped below';
+    // percentage alert fallback
+    if (threshold == null && entry.alertPct) { threshold = entry.alertPct; verb = 'moved ±' + entry.alertPct + '% from'; }
+    entry.alertLog.push({ ts: Date.now(), dir: dir, threshold: threshold, price: entry.price, name: entry.name });
     if (entry.alertLog.length > 50) entry.alertLog = entry.alertLog.slice(-50);
     save();
     renderAlertLog();
     if (hintTimer) { clearTimeout(hintTimer); hintTimer = null; }
-    var threshold = dir === 'above' ? entry.alertAbove : entry.alertBelow;
-    var verb = dir === 'above' ? 'hit' : 'dropped below';
-    els.status.textContent = '🔔 ' + entry.name + ' ' + verb + ' $' + threshold.toLocaleString() + ' — now ' + Sport.formatPrice(entry.price) + '!';
+    var thStr = entry.alertPct && threshold === entry.alertPct ? '±' + threshold + '%' : '$' + threshold.toLocaleString();
+    els.status.textContent = '🔔 ' + entry.name + ' ' + verb + ' ' + thStr + ' — now ' + Sport.formatPrice(entry.price) + '!';
     els.status.classList.remove('error', 'stale-fresh', 'stale-warn', 'stale-old');
     els.status.classList.add('alert');
     els.retry.hidden = true;
@@ -384,8 +405,16 @@
       if (entry.hist.length > HIST_MAX) entry.hist = entry.hist.slice(-HIST_MAX);
       entry.trend = Sport.historyTrend(entry.hist);
       entry.ts = Date.now();
-      if (crossedAbove) flashAlert(entry, 'above');
-      if (crossedBelow) flashAlert(entry, 'below');
+      if (crossedAbove) { flashAlert(entry, 'above'); chime(); }
+      if (crossedBelow) { flashAlert(entry, 'below'); chime(); }
+      // percentage-based alert crossing
+      if (entry.alertPct && entry.alertPctBase != null && entry.price != null) {
+        var pctChange = Math.abs(r.median - entry.alertPctBase) / entry.alertPctBase * 100;
+        var prevPct = Math.abs(entry.price - entry.alertPctBase) / entry.alertPctBase * 100;
+        if (prevPct < entry.alertPct && pctChange >= entry.alertPct) {
+          flashAlert(entry, r.median >= entry.alertPctBase ? 'above' : 'below'); chime();
+        }
+      }
       // daily price snapshot (30-day sparkline — update today's entry or push a new day)
       if (!entry.daily) entry.daily = [];
       var today = new Date().toISOString().slice(0, 10);
@@ -403,8 +432,20 @@
     els.tapeWrap.hidden = state.watch.length === 0;
     els.clearAll.hidden = state.watch.length === 0;
     renderTape();
+    // portfolio total
+    var sum = 0; var priced = 0;
+    state.watch.forEach(function (w) { if (w.price != null) { sum += w.price; priced++; } });
+    els.portfolio.textContent = priced ? 'Total: $' + sum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' (' + priced + ' cards)' : '';
+    // sort
+    var sort = els.sortBy.value;
+    var sorted = state.watch.slice();
+    if (sort === 'name') sorted.sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+    else if (sort === 'price-desc') sorted.sort(function (a, b) { return (b.price || 0) - (a.price || 0); });
+    else if (sort === 'price-asc') sorted.sort(function (a, b) { return (a.price || 0) - (b.price || 0); });
+    else if (sort === 'trend-desc') sorted.sort(function (a, b) { var ta = a.trend ? a.trend.pct : 0; var tb = b.trend ? b.trend.pct : 0; return tb - ta; });
+    else if (sort === 'trend-asc') sorted.sort(function (a, b) { var ta = a.trend ? a.trend.pct : 0; var tb = b.trend ? b.trend.pct : 0; return ta - tb; });
     els.list.innerHTML = '';
-    state.watch.forEach(function (w) {
+    sorted.forEach(function (w) {
       els.list.appendChild(rowFor(w));
     });
   }
@@ -491,11 +532,12 @@
     alertBtn.className = 'alert-btn';
     alertBtn.type = 'button';
     function updateAlertBtn() {
-      var has = w.alertAbove || w.alertBelow;
+      var has = w.alertAbove || w.alertBelow || w.alertPct;
       if (has) {
         var p = [];
         if (w.alertAbove) p.push('above $' + w.alertAbove.toLocaleString());
         if (w.alertBelow) p.push('below $' + w.alertBelow.toLocaleString());
+        if (w.alertPct) p.push('±' + w.alertPct + '%');
         alertBtn.title = 'Alert: ' + p.join(' · ') + ' (click to change)';
         alertBtn.classList.remove('alert-off');
       } else {
@@ -519,7 +561,8 @@
       var inp = document.createElement('input');
       inp.className = 'alert-input'; inp.type = 'number'; inp.min = '0.01'; inp.step = 'any';
       inp.value = w[key] || '';
-      inp.placeholder = (w.price != null ? w.price.toFixed(2) : '0.00');
+      inp.placeholder = key === 'alertPct' ? '10' : (w.price != null ? w.price.toFixed(2) : '0.00');
+      if (key === 'alertPct') inp.title = 'Current base: ' + (w.alertPctBase != null ? Sport.formatPrice(w.alertPctBase) : 'not set') + ' — alert fires when price moves ± this % from the base';
       var set = document.createElement('button');
       set.className = 'alert-set'; set.type = 'button'; set.textContent = 'Set';
       var clr = document.createElement('button');
@@ -530,6 +573,7 @@
         var v = parseFloat(inp.value);
         if (isNaN(v) || v <= 0) { panel.hidden = true; return; }
         w[key] = v;
+        if (key === 'alertPct') w.alertPctBase = w.price;
         updateAlertBtn();
         panel.hidden = true;
         save();
@@ -537,6 +581,7 @@
       clr.addEventListener('click', function (ev) {
         ev.stopPropagation();
         w[key] = null;
+        if (key === 'alertPct') w.alertPctBase = null;
         updateAlertBtn();
         inp.value = '';
         panel.hidden = true;
@@ -547,6 +592,7 @@
 
     panel.appendChild(mkAlertRow('Alert above $', 'alertAbove'));
     panel.appendChild(mkAlertRow('Alert below $', 'alertBelow'));
+    panel.appendChild(mkAlertRow('Alert if ±%', 'alertPct'));
 
     alertBtn.addEventListener('click', function (ev) {
       ev.stopPropagation();
@@ -615,10 +661,12 @@
     items.sort(function (a, b) { return b.ts - a.ts; });
     if (!items.length) {
       els.alertLogBtn.classList.remove('has-log');
+      els.alertLogBtn.removeAttribute('data-count');
       if (!els.alertLogPanel.hidden) els.alertLogPanel.hidden = true;
       return;
     }
     els.alertLogBtn.classList.add('has-log');
+    els.alertLogBtn.setAttribute('data-count', items.length);
     var html = '';
     items.forEach(function (a) {
       var time = new Date(a.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -635,6 +683,7 @@
   });
 
   // ---------- refresh button + auto-refresh ----------
+  els.sortBy.addEventListener('change', function () { render(); });
   els.refresh.addEventListener('click', refreshAll);
   els.retry.addEventListener('click', refreshAll);
   els.clearAll.addEventListener('click', function () {
