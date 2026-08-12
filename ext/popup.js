@@ -53,6 +53,18 @@
     if (lv) els.retry.hidden = false;
   }
 
+  function flashAlert(entry) {
+    if (hintTimer) { clearTimeout(hintTimer); hintTimer = null; }
+    els.status.textContent = '🎯 ' + entry.name + ' hit $' + entry.alertAbove.toLocaleString() + ' — now ' + Sport.formatPrice(entry.price) + '!';
+    els.status.classList.remove('error', 'stale-fresh', 'stale-warn', 'stale-old');
+    els.status.classList.add('alert');
+    els.retry.hidden = true;
+    hintTimer = setTimeout(function () {
+      els.status.classList.remove('alert');
+      els.status.textContent = '';
+    }, 5000);
+  }
+
   function setTokenStatus(msg, isError) {
     els.tokenStatus.textContent = msg || '';
     els.tokenStatus.classList.toggle('error', !!isError);
@@ -351,11 +363,14 @@
       // Only a real median advances the price, the history, and the freshness
       // clock — a refresh with no priced listings keeps the last good price
       // and its honest staleness instead of flipping the row to "—".
+      var crossed = entry.alertAbove != null && entry.price != null &&
+        entry.price < entry.alertAbove && r.median >= entry.alertAbove;
       entry.price = r.median;
       entry.hist.push({ p: r.median, t: Date.now() });
       if (entry.hist.length > HIST_MAX) entry.hist = entry.hist.slice(-HIST_MAX);
       entry.trend = Sport.historyTrend(entry.hist);
       entry.ts = Date.now();
+      if (crossed) flashAlert(entry);
     }
     save();
     render();
@@ -450,6 +465,64 @@
     row.appendChild(quote);
     row.appendChild(x);
 
+    // ---- alert affordance ----
+    var alertBtn = document.createElement('button');
+    alertBtn.className = 'alert-btn';
+    alertBtn.type = 'button';
+    if (w.alertAbove) {
+      alertBtn.title = 'Alert: above $' + w.alertAbove.toLocaleString() + ' (click to change)';
+      alertBtn.classList.remove('alert-off');
+    } else {
+      alertBtn.title = 'Set a price alert';
+      alertBtn.classList.add('alert-off');
+    }
+    alertBtn.textContent = '🔔';
+    row.appendChild(alertBtn);
+
+    var panel = document.createElement('div');
+    panel.className = 'alert-panel';
+    panel.hidden = true;
+    var al = document.createElement('span');
+    al.className = 'alert-label'; al.textContent = 'Alert me above $';
+    var ainp = document.createElement('input');
+    ainp.className = 'alert-input'; ainp.type = 'number'; ainp.min = '0.01'; ainp.step = 'any';
+    ainp.value = w.alertAbove || '';
+    ainp.placeholder = (w.price != null ? w.price.toFixed(2) : '0.00');
+    var aset = document.createElement('button');
+    aset.className = 'alert-set'; aset.type = 'button'; aset.textContent = 'Set';
+    var aclr = document.createElement('button');
+    aclr.className = 'alert-clear'; aclr.type = 'button'; aclr.textContent = 'Clear';
+    panel.appendChild(al); panel.appendChild(ainp); panel.appendChild(aset); panel.appendChild(aclr);
+
+    alertBtn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) ainp.focus();
+    });
+    aset.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      var v = parseFloat(ainp.value);
+      if (isNaN(v) || v <= 0) { panel.hidden = true; return; }
+      w.alertAbove = v;
+      alertBtn.title = 'Alert: above $' + v.toLocaleString() + ' (click to change)';
+      alertBtn.classList.remove('alert-off');
+      panel.hidden = true;
+      save();
+    });
+    aclr.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      w.alertAbove = null;
+      alertBtn.title = 'Set a price alert';
+      alertBtn.classList.add('alert-off');
+      ainp.value = '';
+      panel.hidden = true;
+      save();
+    });
+
+    var wrap = document.createElement('div');
+    wrap.appendChild(row);
+    wrap.appendChild(panel);
+
     row.addEventListener('click', function () {
       chrome.tabs.create({ url: 'https://www.ebay.com/sch/i.html?_nkw=' + encodeURIComponent(w.query) });
     });
@@ -459,7 +532,7 @@
         chrome.tabs.create({ url: 'https://www.ebay.com/sch/i.html?_nkw=' + encodeURIComponent(w.query) });
       }
     });
-    return row;
+    return wrap;
   }
 
   function thumbPlaceholder() {
