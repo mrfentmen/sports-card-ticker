@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SportsTicker</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- main ticker view -->
+  <div id="mainView">
+    <header class="app-header">
+      <div class="logo" aria-hidden="true">⚾</div>
+      <div class="head-text">
+        <h1>SportsTicker</h1>
+        <p class="subtitle">Card prices, like a stock ticker</p>
+      </div>
+      <button id="settings" class="icon-btn" type="button" title="eBay token settings" aria-label="eBay token settings">⚙</button>
+      <button id="refresh" class="icon-btn" type="button" title="Refresh all prices" aria-label="Refresh all prices">⟳</button>
+    </header>
+
+    <div class="tape-wrap" id="tape-wrap" hidden>
+      <div class="tape-label" aria-hidden="true">WATCHLIST</div>
+      <div class="tape-viewport" id="tape" role="marquee" aria-label="Watched card prices"></div>
+    </div>
+
+    <div class="search-wrap">
+      <input id="search" type="search" placeholder="Search cards… e.g. michael jordan rookie card" aria-label="Search sports cards on eBay" autocomplete="off" spellcheck="false">
+      <button id="go" class="btn" type="button">Search</button>
+      <div id="results" class="results" hidden></div>
+    </div>
+
+    <div class="list-head">
+      <span class="list-title">Your cards</span>
+      <button id="clear-all" class="text-btn" type="button" hidden>Clear all</button>
+    </div>
+
+    <main id="list" class="list" aria-label="Watched cards"></main>
+
+    <div id="empty" class="empty" hidden>
+      <p>🔍 Search a card above to start your ticker.</p>
+    </div>
+
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <footer class="footer">
+      <a class="report" href="mailto:contactae2000@gmail.com?subject=Bug+report%3A+SportsTicker&amp;body=Extension%3A+SportsTicker%0A%0A1.+What+happened%3A%0A2.+What+you+expected%3A%0A3.+How+to+reproduce%3A%0A4.+Browser+%2F+OS%3A" title="Report a problem with SportsTicker">🐞 Report a bug</a>
+      <div class="support-foot">
+        <a class="coffee" href="https://www.buymeacoffee.com/contactae2b" target="_blank" rel="noopener">☕ Buy me a coffee</a>
+        <span class="ad-slot" title="Reserved layout space, not an advertisement">Your ad here · contactae2000@gmail.com</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- setup view: paste the free eBay token -->
+  <div id="setupView" hidden>
+    <header class="app-header">
+      <div class="logo" aria-hidden="true">⚾</div>
+      <div class="head-text">
+        <h1>SportsTicker</h1>
+        <p class="subtitle">Connect eBay to price cards</p>
+      </div>
+      <button id="setup-close" class="icon-btn" type="button" title="Back to ticker" aria-label="Back to ticker">✕</button>
+    </header>
+    <div class="setup">
+      <p class="setup-intro">Card prices come from eBay's Browse API. It needs a <b>free</b> developer access token — about two minutes to get one:</p>
+      <ol class="setup-steps">
+        <li>Create a free app at <a href="https://developer.ebay.com/" target="_blank" rel="noopener">developer.ebay.com</a></li>
+        <li>Open the <a href="https://developer.ebay.com/api-docs/static/oauth-token-generator.html" target="_blank" rel="noopener">OAuth token generator</a>, pick your app, and copy the access token</li>
+        <li>Paste it below — tokens expire after about 2 hours, so re-paste anytime</li>
+      </ol>
+      <input id="token" type="text" placeholder="Paste your eBay access token…" aria-label="eBay access token" autocomplete="off" spellcheck="false">
+      <div class="setup-actions">
+        <button id="test-token" class="btn" type="button">Test token</button>
+        <button id="save-token" class="btn primary" type="button">Save &amp; open ticker</button>
+      </div>
+      <p id="token-status" class="status" role="status" aria-live="polite"></p>
+    </div>
+  </div>
+
+  <div id="zoom-toast" class="zoom-toast" hidden></div>
+
+  <script src="ebay.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "sports-card-ticker",
+  "version": "1.0.0",
+  "description": "Search sports cards and watch their market prices like a stock ticker.",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "syntax": "node --check ext/ebay.js && node --check ext/popup.js"
+  }
+}
